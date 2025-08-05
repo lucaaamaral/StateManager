@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    container_name: redis-state-manager
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./docker/redis.conf:/usr/local/etc/redis/redis.conf
+      - redis-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - state-manager-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Development environment
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: lib_build
+    container_name: redis-state-manager-dev
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - build-cache:/app/build
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - state-manager-net
+    command: /bin/sh
+    stdin_open: true
+    tty: true
+
+  # Testing environment
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    container_name: redis-state-manager-test
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - state-manager-net
+
+volumes:
+  redis-data:
+  build-cache:
+
+networks:
+  state-manager-net:
+    driver: bridge

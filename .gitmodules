@@ -1,0 +1,9 @@
+[submodule "external/hiredis"]
+	path = external/hiredis
+	url = https://github.com/redis/hiredis.git
+[submodule "external/redis-plus-plus"]
+	path = external/redis-plus-plus
+	url = https://github.com/sewenew/redis-plus-plus.git
+[submodule "external/json"]
+	path = external/json
+	url = https://github.com/nlohmann/json.git

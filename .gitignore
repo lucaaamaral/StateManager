@@ -1,0 +1,64 @@
+# Ignore build artifacts
+build/
+build_mock/
+build-examples/
+*.o
+*.a
+*.so
+*.dylib
+
+# Ignore temporary files
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.vcxproj*
+*.sln
+
+# Ignore distribution packages
+*.tar.gz
+*.zip
+
+# Ignore logs
+*.log
+
+# Ignore documentation build
+docs/html/
+docs/latex/
+
+# Ignore test results
+test_results/
+*.xml
+
+# Ignore coverage reports
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Ignore profiling data
+*.prof
+gmon.out
+
+# Ignore dependency directories (if using package managers)
+vcpkg/
+conan/
+
+# Ignore Redis data files (if running locally)
+dump.rdb
+appendonly.aof
+
+# Ignore Docker volumes
+.docker/
+
+# Ignore environment files
+.env
+.env.local
+
+# AI tool configuration
+forge.yaml
