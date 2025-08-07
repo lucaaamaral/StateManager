@@ -25,13 +25,15 @@ private:
   size_t current_size_;
   int max_files_;
   int current_file_index_;
+  LogLevel current_level_;
 
 public:
   RotatingFileLogger(const std::string &filename_base,
                      size_t max_file_size = 1024 * 1024, // 1MB default
                      int max_files = 5)
       : filename_base_(filename_base), max_file_size_(max_file_size),
-        current_size_(0), max_files_(max_files), current_file_index_(0) {
+        current_size_(0), max_files_(max_files), current_file_index_(0),
+        current_level_(LogLevel::INFO) {
 
     // Create the initial log file
     rotateLogFile();
@@ -70,6 +72,14 @@ public:
   void log(LogLevel level, const std::string &message,
            const std::string &context = "") override {
     log(logLevelToString(level), message, context);
+  }
+
+  void setLevel(const std::string level) override {
+    current_level_ = stringToLogLevel(level);
+  }
+
+  void setLevel(const LogLevel level) override {
+    current_level_ = level;
   }
 
 private:
@@ -138,10 +148,11 @@ class FilteredLogger : public LoggerIface {
 private:
   LogLevel min_level_;
   std::shared_ptr<LoggerIface> base_logger_;
+  LogLevel current_level_;
 
 public:
   FilteredLogger(LogLevel min_level, std::shared_ptr<LoggerIface> base_logger)
-      : min_level_(min_level), base_logger_(std::move(base_logger)) {}
+      : min_level_(min_level), base_logger_(std::move(base_logger)), current_level_(LogLevel::INFO) {}
 
   void log(const std::string &level, const std::string &message,
            const std::string &context = "") override {
@@ -159,6 +170,16 @@ public:
     if (level >= min_level_) {
       base_logger_->log(level, message, context);
     }
+  }
+
+  void setLevel(const std::string level) override {
+    current_level_ = stringToLogLevel(level);
+    base_logger_->setLevel(level);
+  }
+
+  void setLevel(const LogLevel level) override {
+    current_level_ = level;
+    base_logger_->setLevel(level);
   }
 };
 
@@ -180,12 +201,13 @@ private:
   std::thread worker_thread_;
   bool stop_thread_;
   size_t max_queue_size_;
+  LogLevel current_level_;
 
 public:
   AsyncLogger(std::shared_ptr<LoggerIface> base_logger,
               size_t max_queue_size = 1000)
       : base_logger_(std::move(base_logger)), stop_thread_(false),
-        max_queue_size_(max_queue_size) {
+        max_queue_size_(max_queue_size), current_level_(LogLevel::INFO) {
 
     // Start the worker thread
     worker_thread_ = std::thread(&AsyncLogger::processLogs, this);
@@ -253,6 +275,16 @@ public:
     cv_.notify_one();
   }
 
+  void setLevel(const std::string level) override {
+    current_level_ = stringToLogLevel(level);
+    base_logger_->setLevel(level);
+  }
+
+  void setLevel(const LogLevel level) override {
+    current_level_ = level;
+    base_logger_->setLevel(level);
+  }
+
 private:
   void processLogs() {
     while (true) {
@@ -294,11 +326,12 @@ private:
   std::shared_ptr<LoggerIface> base_logger_;
   std::atomic<uint64_t> log_count_{0};
   std::chrono::steady_clock::time_point start_time_;
+  LogLevel current_level_;
 
 public:
   PerformanceLogger(std::shared_ptr<LoggerIface> base_logger)
       : base_logger_(std::move(base_logger)),
-        start_time_(std::chrono::steady_clock::now()) {}
+        start_time_(std::chrono::steady_clock::now()), current_level_(LogLevel::INFO) {}
 
   void log(const std::string &level, const std::string &message,
            const std::string &context = "") override {
@@ -340,6 +373,16 @@ public:
   void resetStatistics() {
     log_count_ = 0;
     start_time_ = std::chrono::steady_clock::now();
+  }
+
+  void setLevel(const std::string level) override {
+    current_level_ = stringToLogLevel(level);
+    base_logger_->setLevel(level);
+  }
+
+  void setLevel(const LogLevel level) override {
+    current_level_ = level;
+    base_logger_->setLevel(level);
   }
 };
 

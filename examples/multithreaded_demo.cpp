@@ -1,4 +1,5 @@
 #include "core/StateManager.h"
+#include "return/StateObj.h"
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -7,7 +8,7 @@
 #include <mutex>
 #include <random>
 
-using namespace StateManager;
+// Remove ambiguous using namespace - use explicit scope resolution instead
 
 void printSeparator(const std::string& title) {
     std::cout << "\n" << std::string(60, '=') << std::endl;
@@ -15,11 +16,27 @@ void printSeparator(const std::string& title) {
     std::cout << std::string(60, '=') << std::endl;
 }
 
+// Simple StateObj wrapper for multithreaded demo data
+class ThreadData : public StateManager::StateObj {
+public:
+    nlohmann::json data;
+    
+    ThreadData() = default;
+    ThreadData(const nlohmann::json& d) : data(d) {}
+    
+    // StateObj virtual method declarations
+    nlohmann::json to_json() const override;
+    void from_json(const nlohmann::json& j) override;
+    std::unique_ptr<::StateManager::StateObj> clone() const override;
+};
+
+STATE_OBJ_DEFINE_TYPE(ThreadData, data)
+
 void demonstrateConcurrentWrites() {
     printSeparator("CONCURRENT WRITES DEMO");
     
-    RedisConfig config;
-    StateManager stateManager(config);
+    StateManager::RedisConfig config;
+    StateManager::StateManager stateManager(config);
     
     const int numThreads = 10;
     const int operationsPerThread = 50;
@@ -42,7 +59,7 @@ void demonstrateConcurrentWrites() {
             for (int op = 0; op < operationsPerThread; ++op) {
                 std::string key = "thread_" + std::to_string(threadId) + "_item_" + std::to_string(op);
                 
-                nlohmann::json data = {
+                nlohmann::json jsonData = {
                     {"thread_id", threadId},
                     {"operation_id", op},
                     {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -51,7 +68,8 @@ void demonstrateConcurrentWrites() {
                     {"data", "Data from thread " + std::to_string(threadId) + ", op " + std::to_string(op)}
                 };
                 
-                bool success = stateManager.write(key, data);
+                ThreadData threadData(jsonData);
+                bool success = stateManager.write(key, threadData);
                 if (success) {
                     successfulWrites.fetch_add(1);
                 } else {
@@ -92,12 +110,15 @@ void demonstrateConcurrentWrites() {
         int randomOp = gen() % operationsPerThread;
         std::string key = "thread_" + std::to_string(randomThread) + "_item_" + std::to_string(randomOp);
         
-        auto [error, data] = stateManager.read(key);
+        auto [error, obj] = stateManager.read(key, ThreadData{});
         if (!error.has_value()) {
-            // Verify the data is consistent
-            if (data["thread_id"].get<int>() == randomThread && 
-                data["operation_id"].get<int>() == randomOp) {
-                successfulReads++;
+            ThreadData* threadData = dynamic_cast<ThreadData*>(obj.get());
+            if (threadData) {
+                // Verify the data is consistent
+                if (threadData->data["thread_id"].get<int>() == randomThread && 
+                    threadData->data["operation_id"].get<int>() == randomOp) {
+                    successfulReads++;
+                }
             }
         }
     }
@@ -122,8 +143,8 @@ void demonstrateConcurrentWrites() {
 void demonstrateConcurrentReadWrite() {
     printSeparator("CONCURRENT READ/WRITE DEMO");
     
-    RedisConfig config;
-    StateManager stateManager(config);
+    StateManager::RedisConfig config;
+    StateManager::StateManager stateManager(config);
     
     const std::string sharedKey = "shared_counter";
     const int numReaderThreads = 5;
@@ -137,11 +158,12 @@ void demonstrateConcurrentReadWrite() {
     std::mutex outputMutex;
     
     // Initialize shared data
-    nlohmann::json initialData = {
+    nlohmann::json initialJson = {
         {"counter", 0},
         {"last_update", "initialization"},
         {"total_updates", 0}
     };
+    ThreadData initialData(initialJson);
     stateManager.write(sharedKey, initialData);
     
     std::cout << "Starting concurrent read/write operations on shared key: " << sharedKey << std::endl;
@@ -158,15 +180,18 @@ void demonstrateConcurrentReadWrite() {
             std::uniform_int_distribution<> dis(10, 50);
             
             for (int op = 0; op < operationsPerThread; ++op) {
-                auto [error, data] = stateManager.read(sharedKey);
+                auto [error, obj] = stateManager.read(sharedKey, ThreadData{});
                 if (!error.has_value()) {
-                    totalReads.fetch_add(1);
-                    
-                    // Occasionally print what we read
-                    if (op % 10 == 0) {
-                        std::lock_guard<std::mutex> lock(outputMutex);
-                        std::cout << "Reader " << readerId << " read counter: " 
-                                  << data["counter"].get<int>() << std::endl;
+                    ThreadData* threadData = dynamic_cast<ThreadData*>(obj.get());
+                    if (threadData) {
+                        totalReads.fetch_add(1);
+                        
+                        // Occasionally print what we read
+                        if (op % 10 == 0) {
+                            std::lock_guard<std::mutex> lock(outputMutex);
+                            std::cout << "Reader " << readerId << " read counter: " 
+                                      << threadData->data["counter"].get<int>() << std::endl;
+                        }
                     }
                 } else {
                     readErrors.fetch_add(1);
@@ -186,26 +211,29 @@ void demonstrateConcurrentReadWrite() {
             
             for (int op = 0; op < operationsPerThread; ++op) {
                 // Read current data, modify it, and write back
-                auto [error, data] = stateManager.read(sharedKey);
+                auto [error, obj] = stateManager.read(sharedKey, ThreadData{});
                 if (!error.has_value()) {
-                    // Modify the data
-                    data["counter"] = data["counter"].get<int>() + 1;
-                    data["last_update"] = "writer_" + std::to_string(writerId) + "_op_" + std::to_string(op);
-                    data["total_updates"] = data["total_updates"].get<int>() + 1;
-                    data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::system_clock::now().time_since_epoch()).count();
-                    
-                    bool writeSuccess = stateManager.write(sharedKey, data);
-                    if (writeSuccess) {
-                        totalWrites.fetch_add(1);
+                    ThreadData* threadData = dynamic_cast<ThreadData*>(obj.get());
+                    if (threadData) {
+                        // Modify the data
+                        threadData->data["counter"] = threadData->data["counter"].get<int>() + 1;
+                        threadData->data["last_update"] = "writer_" + std::to_string(writerId) + "_op_" + std::to_string(op);
+                        threadData->data["total_updates"] = threadData->data["total_updates"].get<int>() + 1;
+                        threadData->data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
                         
-                        if (op % 10 == 0) {
-                            std::lock_guard<std::mutex> lock(outputMutex);
-                            std::cout << "Writer " << writerId << " updated counter to: " 
-                                      << data["counter"].get<int>() << std::endl;
+                        bool writeSuccess = stateManager.write(sharedKey, *threadData);
+                        if (writeSuccess) {
+                            totalWrites.fetch_add(1);
+                            
+                            if (op % 10 == 0) {
+                                std::lock_guard<std::mutex> lock(outputMutex);
+                                std::cout << "Writer " << writerId << " updated counter to: " 
+                                          << threadData->data["counter"].get<int>() << std::endl;
+                            }
+                        } else {
+                            writeErrors.fetch_add(1);
                         }
-                    } else {
-                        writeErrors.fetch_add(1);
                     }
                 } else {
                     readErrors.fetch_add(1);
@@ -225,7 +253,7 @@ void demonstrateConcurrentReadWrite() {
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
     
     // Read final state
-    auto [finalError, finalData] = stateManager.read(sharedKey);
+    auto [finalError, finalObj] = stateManager.read(sharedKey, ThreadData{});
     
     std::cout << "\nResults:" << std::endl;
     std::cout << "  Total reads: " << totalReads.load() << " (errors: " << readErrors.load() << ")" << std::endl;
@@ -233,9 +261,12 @@ void demonstrateConcurrentReadWrite() {
     std::cout << "  Duration: " << duration.count() << " ms" << std::endl;
     
     if (!finalError.has_value()) {
-        std::cout << "  Final counter value: " << finalData["counter"].get<int>() << std::endl;
-        std::cout << "  Total updates recorded: " << finalData["total_updates"].get<int>() << std::endl;
-        std::cout << "  Last update by: " << finalData["last_update"].get<std::string>() << std::endl;
+        ThreadData* finalData = dynamic_cast<ThreadData*>(finalObj.get());
+        if (finalData) {
+            std::cout << "  Final counter value: " << finalData->data["counter"].get<int>() << std::endl;
+            std::cout << "  Total updates recorded: " << finalData->data["total_updates"].get<int>() << std::endl;
+            std::cout << "  Last update by: " << finalData->data["last_update"].get<std::string>() << std::endl;
+        }
     }
     
     // Cleanup
@@ -246,8 +277,8 @@ void demonstrateConcurrentReadWrite() {
 void demonstrateLoadTesting() {
     printSeparator("LOAD TESTING DEMO");
     
-    RedisConfig config;
-    StateManager stateManager(config);
+    StateManager::RedisConfig config;
+    StateManager::StateManager stateManager(config);
     
     const int numThreads = 8;
     const int operationsPerThread = 100;
@@ -281,18 +312,19 @@ void demonstrateLoadTesting() {
                 
                 switch (operation) {
                     case 0: { // Write
-                        nlohmann::json data = {
+                        nlohmann::json jsonData = {
                             {"thread", threadId},
                             {"operation", op},
                             {"value", valueDis(gen)},
                             {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::system_clock::now().time_since_epoch()).count()}
                         };
+                        ThreadData data(jsonData);
                         success = stateManager.write(key, data);
                         break;
                     }
                     case 1: { // Read
-                        auto [error, data] = stateManager.read(key);
+                        auto [error, obj] = stateManager.read(key, ThreadData{});
                         success = !error.has_value();
                         break;
                     }
@@ -360,9 +392,9 @@ void demonstrateLoadTesting() {
 }
 
 int main() {
-    std::cout << "StateManager Library - Multithreaded Demo" << std::endl;
-    std::cout << "==========================================" << std::endl;
-    std::cout << "This demo showcases thread safety and concurrent access patterns." << std::endl;
+    std::cout << "StateManager Library - Multithreaded Demo (StateObj Interface)" << std::endl;
+    std::cout << "===============================================================" << std::endl;
+    std::cout << "This demo showcases thread safety and concurrent access patterns with StateObj." << std::endl;
     std::cout << "Make sure Redis is running on localhost:6379 before running this demo." << std::endl;
     
     try {
@@ -374,7 +406,7 @@ int main() {
         printSeparator("DEMO COMPLETED");
         std::cout << "All multithreaded demonstrations completed successfully!" << std::endl;
         std::cout << "The StateManager library demonstrated robust thread safety" << std::endl;
-        std::cout << "and performance under concurrent access patterns." << std::endl;
+        std::cout << "and performance under concurrent access patterns with StateObj interface." << std::endl;
         
     } catch (const std::exception& e) {
         std::cout << "✗ Exception during demo: " << e.what() << std::endl;
