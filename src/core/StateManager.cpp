@@ -29,9 +29,10 @@ void StateManager::setConfig(const RedisConfig& config) {
   RedisClient::setConfig(config);
 }
 
-bool StateManager::write(const std::string &key, const json &value) {
+bool StateManager::write(const std::string &key, const StateObj &value) {
   try {
-    std::string json_string = value.dump();
+    json json_value = value.to_json();
+    std::string json_string = json_value.dump();
     
     // Use RedisStorage to write the JSON string
     RedisStorage storage;
@@ -71,39 +72,48 @@ bool StateManager::erase(const std::string &key) {
   }
 }
 
-std::pair<error, json> StateManager::read(const std::string &key) {
+std::pair<error, std::unique_ptr<StateObj>> StateManager::read(const std::string &key, const StateObj& template_obj) {
   try {
     RedisStorage storage;
     std::string json_string = storage.read(key);
     
     if (json_string.empty()) {
       this->log(logging::LogLevel::WARNING, "Key not found or empty: " + key);
-      return std::make_pair(std::make_optional("Key not found"), json{});
+      return std::make_pair(std::make_optional("Key not found"), nullptr);
     }
     
     // Parse JSON string back to object
     json json_value = json::parse(json_string);
     
+    // Clone the template object and deserialize into it
+    auto result = template_obj.clone();
+    result->from_json(json_value);
+    
     this->log(logging::LogLevel::INFO, "Successfully read value from key: " + key);
-    return std::make_pair(std::nullopt, json_value);
+    return std::make_pair(std::nullopt, std::move(result));
 
   } catch (const json::exception& e) {
     this->log(logging::LogLevel::ERROR, "JSON deserialization error for key " + key + ": " + e.what());
-    return std::make_pair(std::make_optional("JSON parsing error"), json{});
+    return std::make_pair(std::make_optional("JSON parsing error"), nullptr);
   } catch (const std::exception& e) {
     this->log(logging::LogLevel::ERROR, "Error reading from key " + key + ": " + e.what());
-    return std::make_pair(std::make_optional("Storage error"), json{});
+    return std::make_pair(std::make_optional("Storage error"), nullptr);
   }
 }
 
-void StateManager::subscribe(const std::string& channel, std::function<void(const json&)> callback) {
+void StateManager::subscribe(const std::string& channel, std::function<void(std::unique_ptr<StateObj>)> callback, const StateObj& template_obj) {
   try {
     RedisChannel& redis_channel = RedisChannel::getInstance();
     
-    // Wrap the user callback to handle JSON deserialization
-    auto wrapped_callback = [this, callback, channel](const std::string& message) {
+    // Clone the template object once and capture by value for safety
+    auto template_clone = template_obj.clone();
+    
+    // Wrap the user callback to handle JSON deserialization and StateObj creation
+    auto wrapped_callback = [this, callback = std::move(callback), channel, template_ptr = std::shared_ptr<StateObj>(std::move(template_clone))](const std::string& message) {
       json json_value = json::parse(message);
-      callback(json_value);
+      auto state_obj = template_ptr->clone();
+      state_obj->from_json(json_value);
+      callback(std::move(state_obj));
       this->log(logging::LogLevel::DEBUG, "Successfully processed message on channel: " + channel);
     };
     
@@ -121,9 +131,10 @@ void StateManager::unsubscribe(const std::string& channel) {
   this->log(logging::LogLevel::INFO, "Successfully unsubscribed from channel: " + channel);
 }
 
-bool StateManager::publish(const std::string& channel, const json& data) {
+bool StateManager::publish(const std::string& channel, const StateObj& data) {
   try {
-    std::string json_string = data.dump();
+    json json_value = data.to_json();
+    std::string json_string = json_value.dump();
     
     RedisChannel& redis_channel = RedisChannel::getInstance();
     bool success = redis_channel.publish(channel, json_string);
