@@ -1,10 +1,13 @@
-#include "Logging.h"
-#include "core/StateManager.h"
+#include "logging/LoggerIface.h"
+#include "logging/LoggerFactory.h"
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <vector>
+#include <mutex>
+#include <sstream>
 
 // Example of a custom logger that writes to a file
 class FileLogger : public StateManager::logging::LoggerIface {
@@ -12,10 +15,11 @@ private:
   std::ofstream log_file_;
   std::string prefix_;
   std::mutex log_mutex_;
+  StateManager::logging::LogLevel current_level_;
 
 public:
   FileLogger(const std::string &filename, const std::string &prefix = "")
-      : prefix_(prefix) {
+      : prefix_(prefix), current_level_(StateManager::logging::LogLevel::INFO) {
     log_file_.open(filename, std::ios::out | std::ios::app);
     if (!log_file_.is_open()) {
       throw std::runtime_error("Failed to open log file: " + filename);
@@ -60,6 +64,14 @@ public:
            const std::string &context = "") override {
     log(StateManager::logging::logLevelToString(level), message, context);
   }
+
+  void setLevel(const std::string level) override {
+    current_level_ = StateManager::logging::stringToLogLevel(level);
+  }
+
+  void setLevel(const StateManager::logging::LogLevel level) override {
+    current_level_ = level;
+  }
 };
 
 // Example of a custom logger that sends logs to multiple destinations
@@ -67,8 +79,11 @@ class MultiLogger : public StateManager::logging::LoggerIface {
 private:
   std::vector<std::shared_ptr<StateManager::logging::LoggerIface>> loggers_;
   std::mutex loggers_mutex_;
+  StateManager::logging::LogLevel current_level_;
 
 public:
+  MultiLogger() : current_level_(StateManager::logging::LogLevel::INFO) {}
+
   void addLogger(std::shared_ptr<StateManager::logging::LoggerIface> logger) {
     if (logger) {
       std::lock_guard<std::mutex> lock(loggers_mutex_);
@@ -91,6 +106,22 @@ public:
       logger->log(level, message, context);
     }
   }
+
+  void setLevel(const std::string level) override {
+    std::lock_guard<std::mutex> lock(loggers_mutex_);
+    current_level_ = StateManager::logging::stringToLogLevel(level);
+    for (auto &logger : loggers_) {
+      logger->setLevel(level);
+    }
+  }
+
+  void setLevel(const StateManager::logging::LogLevel level) override {
+    std::lock_guard<std::mutex> lock(loggers_mutex_);
+    current_level_ = level;
+    for (auto &logger : loggers_) {
+      logger->setLevel(level);
+    }
+  }
 };
 
 int main() {
@@ -99,12 +130,7 @@ int main() {
     std::cout << "Example 1: Using the default logger" << std::endl;
     {
       // The default logger will be used automatically
-      StateManager::RedisConfig config;
-      config.host = "localhost";
-      config.port = 6379;
-
-      auto stateManager = StateManager::StateManager::createWithDefaults();
-      // Use the state manager...
+      std::cout << "Default logger automatically used by logging framework" << std::endl;
     }
 
     // Example 2: Using a custom file logger
@@ -117,12 +143,9 @@ int main() {
       // Set it as the global logger
       StateManager::logging::LoggerFactory::setLogger(fileLogger);
 
-      StateManager::RedisConfig config;
-      config.host = "localhost";
-      config.port = 6379;
-
-      auto stateManager = StateManager::StateManager::createWithDefaults();
-      // Use the state manager...
+      // Use the logger
+      auto logger = StateManager::logging::LoggerFactory::getLogger();
+      logger->info("Custom file logger initialized");
     }
 
     // Example 3: Using a multi-destination logger
@@ -141,12 +164,10 @@ int main() {
       // Set it as the global logger
       StateManager::logging::LoggerFactory::setLogger(multiLogger);
 
-      StateManager::RedisConfig config;
-      config.host = "localhost";
-      config.port = 6379;
-
-      auto stateManager = StateManager::StateManager::createWithDefaults();
-      // Use the state manager...
+      // Use the logger
+      auto logger = StateManager::logging::LoggerFactory::getLogger();
+      logger->info("Multi-destination logger configured");
+      logger->warning("This message goes to both console and file");
     }
 
     return 0;
