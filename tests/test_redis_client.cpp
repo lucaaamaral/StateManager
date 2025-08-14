@@ -588,50 +588,52 @@ TEST_F(RedisClientTest, PortVariations) {
 TEST_F(RedisClientTest, ConcurrentSingletonCreation) {
   const int num_threads = 10;
   std::vector<std::thread> threads;
-  std::vector<sw::redis::Redis*> client_ptrs(num_threads);
+  std::vector<sw::redis::Redis *> client_ptrs(num_threads);
   std::atomic<int> success_count{0};
 
   // Multiple threads trying to get client simultaneously
   for (int i = 0; i < num_threads; ++i) {
     threads.emplace_back([&client_ptrs, &success_count, i]() {
       try {
-        sw::redis::Redis& client = RedisClientTest::getClient();
+        sw::redis::Redis &client = RedisClientTest::getClient();
         client_ptrs[i] = &client;
-        
+
         // Test that the client actually works
         std::string pong = client.ping();
         if (pong == "PONG") {
           success_count++;
         }
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         client_ptrs[i] = nullptr;
       }
     });
   }
 
   // Wait for all threads
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
 
   // All threads should get the same singleton instance
-  sw::redis::Redis* first_valid_ptr = nullptr;
+  sw::redis::Redis *first_valid_ptr = nullptr;
   for (int i = 0; i < num_threads; ++i) {
     if (client_ptrs[i] != nullptr) {
       if (first_valid_ptr == nullptr) {
         first_valid_ptr = client_ptrs[i];
       } else {
-        EXPECT_EQ(client_ptrs[i], first_valid_ptr) 
-          << "Thread " << i << " got different singleton instance";
+        EXPECT_EQ(client_ptrs[i], first_valid_ptr)
+            << "Thread " << i << " got different singleton instance";
       }
     }
   }
 
-  EXPECT_GT(success_count.load(), 0) << "No threads successfully accessed Redis client";
-  logger->info("Concurrent singleton test: " + std::to_string(success_count.load()) + 
-               "/" + std::to_string(num_threads) + " threads succeeded");
+  EXPECT_GT(success_count.load(), 0)
+      << "No threads successfully accessed Redis client";
+  logger->info(
+      "Concurrent singleton test: " + std::to_string(success_count.load()) +
+      "/" + std::to_string(num_threads) + " threads succeeded");
 }
 
 // Test concurrent configuration changes
@@ -643,7 +645,8 @@ TEST_F(RedisClientTest, ConcurrentConfigurationChanges) {
   std::atomic<int> total_attempts{0};
 
   for (int t = 0; t < num_threads; ++t) {
-    threads.emplace_back([&success_count, &total_attempts, t, configs_per_thread]() {
+    threads.emplace_back([&success_count, &total_attempts, t,
+                          configs_per_thread]() {
       for (int c = 0; c < configs_per_thread; ++c) {
         try {
           RedisConfig config;
@@ -655,17 +658,17 @@ TEST_F(RedisClientTest, ConcurrentConfigurationChanges) {
           RedisClient::setConfig(config);
           total_attempts++;
           success_count++;
-          
+
           // Brief delay to increase chance of race conditions
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
           total_attempts++;
         }
       }
     });
   }
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
@@ -673,8 +676,9 @@ TEST_F(RedisClientTest, ConcurrentConfigurationChanges) {
 
   // All configuration attempts should succeed
   EXPECT_EQ(success_count.load(), total_attempts.load());
-  logger->info("Concurrent config test: " + std::to_string(success_count.load()) + 
-               "/" + std::to_string(total_attempts.load()) + " config changes succeeded");
+  logger->info(
+      "Concurrent config test: " + std::to_string(success_count.load()) + "/" +
+      std::to_string(total_attempts.load()) + " config changes succeeded");
 }
 
 // Test concurrent Redis operations
@@ -694,46 +698,50 @@ TEST_F(RedisClientTest, ConcurrentRedisOperations) {
   RedisClient::setConfig(config);
 
   for (int t = 0; t < num_threads; ++t) {
-    threads.emplace_back([&success_count, &total_operations, t, operations_per_thread]() {
-      for (int op = 0; op < operations_per_thread; ++op) {
-        try {
-          sw::redis::Redis& client = RedisClientTest::getClient();
-          
-          // Perform different operations to test thread safety
-          std::string key = "thread_" + std::to_string(t) + "_op_" + std::to_string(op);
-          std::string value = "value_" + std::to_string(t) + "_" + std::to_string(op);
-          
-          // SET operation
-          client.set(key, value);
-          
-          // GET operation  
-          auto retrieved = client.get(key);
-          if (retrieved && *retrieved == value) {
-            success_count++;
+    threads.emplace_back(
+        [&success_count, &total_operations, t, operations_per_thread]() {
+          for (int op = 0; op < operations_per_thread; ++op) {
+            try {
+              sw::redis::Redis &client = RedisClientTest::getClient();
+
+              // Perform different operations to test thread safety
+              std::string key =
+                  "thread_" + std::to_string(t) + "_op_" + std::to_string(op);
+              std::string value =
+                  "value_" + std::to_string(t) + "_" + std::to_string(op);
+
+              // SET operation
+              client.set(key, value);
+
+              // GET operation
+              auto retrieved = client.get(key);
+              if (retrieved && *retrieved == value) {
+                success_count++;
+              }
+
+              // DELETE operation
+              client.del(key);
+
+              total_operations++;
+
+            } catch (const std::exception &e) {
+              total_operations++;
+            }
           }
-          
-          // DELETE operation
-          client.del(key);
-          
-          total_operations++;
-          
-        } catch (const std::exception& e) {
-          total_operations++;
-        }
-      }
-    });
+        });
   }
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
 
-  EXPECT_EQ(success_count.load(), total_operations.load()) 
-    << "Some Redis operations failed in concurrent test";
-  logger->info("Concurrent operations test: " + std::to_string(success_count.load()) + 
-               "/" + std::to_string(total_operations.load()) + " operations succeeded");
+  EXPECT_EQ(success_count.load(), total_operations.load())
+      << "Some Redis operations failed in concurrent test";
+  logger->info(
+      "Concurrent operations test: " + std::to_string(success_count.load()) +
+      "/" + std::to_string(total_operations.load()) + " operations succeeded");
 }
 
 // Test mixed concurrent operations (config changes + Redis operations)
@@ -757,13 +765,13 @@ TEST_F(RedisClientTest, MixedConcurrentOperations) {
           config.port = 6379;
           config.database = config_count % 2;
           config.timeout_ms = 1000 + (t * 200);
-          
+
           RedisClient::setConfig(config);
           config_success++;
           config_count++;
-          
+
           std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
           // Config change failed, continue
         }
       }
@@ -772,26 +780,28 @@ TEST_F(RedisClientTest, MixedConcurrentOperations) {
 
   // Redis operation threads
   for (int t = 0; t < num_operation_threads; ++t) {
-    threads.emplace_back([&operation_success, &stop_test, t, operations_per_thread]() {
+    threads.emplace_back([&operation_success, &stop_test, t,
+                          operations_per_thread]() {
       for (int op = 0; op < operations_per_thread && !stop_test.load(); ++op) {
         try {
-          sw::redis::Redis& client = RedisClientTest::getClient();
+          sw::redis::Redis &client = RedisClientTest::getClient();
           auto lock = RedisClientTest::lockClient();
-          
-          std::string key = "mixed_thread_" + std::to_string(t) + "_op_" + std::to_string(op);
+
+          std::string key =
+              "mixed_thread_" + std::to_string(t) + "_op_" + std::to_string(op);
           std::string value = "mixed_value_" + std::to_string(t);
-          
+
           client.set(key, value);
           auto retrieved = client.get(key);
-          
+
           if (retrieved && *retrieved == value) {
             operation_success++;
           }
-          
+
           client.del(key);
-          
+
           std::this_thread::sleep_for(std::chrono::milliseconds(25));
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
           // Operation failed, continue
         }
       }
@@ -802,7 +812,7 @@ TEST_F(RedisClientTest, MixedConcurrentOperations) {
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
   stop_test = true;
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
@@ -810,8 +820,9 @@ TEST_F(RedisClientTest, MixedConcurrentOperations) {
 
   EXPECT_GT(config_success.load(), 0) << "No config changes succeeded";
   EXPECT_GT(operation_success.load(), 0) << "No Redis operations succeeded";
-  
-  logger->info("Mixed operations test - Config changes: " + std::to_string(config_success.load()) + 
+
+  logger->info("Mixed operations test - Config changes: " +
+               std::to_string(config_success.load()) +
                ", Operations: " + std::to_string(operation_success.load()));
 }
 
@@ -830,59 +841,68 @@ TEST_F(RedisClientTest, ConcurrentLockContention) {
   RedisClient::setConfig(config);
 
   for (int t = 0; t < num_threads; ++t) {
-    threads.emplace_back([&lock_acquisitions, &successful_operations, &lock_times, t]() {
-      try {
-        auto start_time = std::chrono::steady_clock::now();
+    threads.emplace_back(
+        [&lock_acquisitions, &successful_operations, &lock_times, t]() {
+          try {
+            auto start_time = std::chrono::steady_clock::now();
 
-        // Acquire the Redis client lock
-        // Hold lock for a short time and perform operation
-        sw::redis::Redis& client = RedisClientTest::getClient();
-        auto lock = RedisClientTest::lockClient();
-        lock_times[t] = std::chrono::steady_clock::now();
-        lock_acquisitions++;
+            // Acquire the Redis client lock
+            // Hold lock for a short time and perform operation
+            sw::redis::Redis &client = RedisClientTest::getClient();
+            auto lock = RedisClientTest::lockClient();
+            lock_times[t] = std::chrono::steady_clock::now();
+            lock_acquisitions++;
 
-        std::string key = "lock_test_" + std::to_string(t);
-        std::string value = "locked_value_" + std::to_string(t);
-        
-        client.set(key, value);
-        auto retrieved = client.get(key);
-        
-        if (retrieved && *retrieved == value) {
-          successful_operations++;
-        }
-        
-        client.del(key);
-        
-        // Hold lock briefly to test contention
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
-        lock.unlock();
-      } catch (const std::exception& e) {
-        // Lock acquisition or operation failed
-      }
-    });
+            std::string key = "lock_test_" + std::to_string(t);
+            std::string value = "locked_value_" + std::to_string(t);
+
+            client.set(key, value);
+            auto retrieved = client.get(key);
+
+            if (retrieved && *retrieved == value) {
+              successful_operations++;
+            }
+
+            client.del(key);
+
+            // Hold lock briefly to test contention
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            lock.unlock();
+          } catch (const std::exception &e) {
+            // Lock acquisition or operation failed
+          }
+        });
   }
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
 
-  EXPECT_EQ(lock_acquisitions.load(), num_threads) << "Some threads failed to acquire lock";
-  EXPECT_EQ(successful_operations.load(), num_threads) << "Some operations failed while holding lock";
-  
-  // Verify locks were acquired serially (no two threads got lock simultaneously)
+  EXPECT_EQ(lock_acquisitions.load(), num_threads)
+      << "Some threads failed to acquire lock";
+  EXPECT_EQ(successful_operations.load(), num_threads)
+      << "Some operations failed while holding lock";
+
+  // Verify locks were acquired serially (no two threads got lock
+  // simultaneously)
   for (int i = 0; i < num_threads - 1; ++i) {
     for (int j = i + 1; j < num_threads; ++j) {
-      auto time_diff = std::abs(std::chrono::duration_cast<std::chrono::milliseconds>(
-        lock_times[i] - lock_times[j]).count());
-      EXPECT_GE(time_diff, 45) << "Threads " << i << " and " << j << " acquired locks too close in time";
+      auto time_diff =
+          std::abs(std::chrono::duration_cast<std::chrono::milliseconds>(
+                       lock_times[i] - lock_times[j])
+                       .count());
+      EXPECT_GE(time_diff, 45) << "Threads " << i << " and " << j
+                               << " acquired locks too close in time";
     }
   }
-  
-  logger->info("Lock contention test: " + std::to_string(lock_acquisitions.load()) + 
-               " locks acquired, " + std::to_string(successful_operations.load()) + " operations succeeded");
+
+  logger->info(
+      "Lock contention test: " + std::to_string(lock_acquisitions.load()) +
+      " locks acquired, " + std::to_string(successful_operations.load()) +
+      " operations succeeded");
 }
 
 // Test thread safety during connection failures and recovery
@@ -903,13 +923,13 @@ TEST_F(RedisClientTest, ConcurrentConnectionRecovery) {
     threads.emplace_back([&successful_reconnects, &successful_operations, t]() {
       // Phase 1: Try operations with invalid config (should fail)
       try {
-        sw::redis::Redis& client = RedisClientTest::getClient();
+        sw::redis::Redis &client = RedisClientTest::getClient();
         auto lock = RedisClientTest::lockClient();
         client.ping(); // This should fail
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         // Expected to fail
       }
-      
+
       // Phase 2: Set valid config and try again
       try {
         RedisConfig valid_config;
@@ -917,37 +937,40 @@ TEST_F(RedisClientTest, ConcurrentConnectionRecovery) {
         valid_config.port = 6379;
         valid_config.database = t % 2;
         valid_config.timeout_ms = 2000;
-        
+
         RedisClient::setConfig(valid_config);
         successful_reconnects++;
-        
+
         // Give some time for connection
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
+
         // Try operation with valid config
-        sw::redis::Redis& client = RedisClientTest::getClient();
+        sw::redis::Redis &client = RedisClientTest::getClient();
         auto lock = RedisClientTest::lockClient();
         std::string pong = client.ping();
-        
+
         if (pong == "PONG") {
           successful_operations++;
         }
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         // Reconnection or operation failed
       }
     });
   }
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
 
-  EXPECT_GT(successful_reconnects.load(), 0) << "No threads successfully changed to valid config";
-  
-  logger->info("Connection recovery test: " + std::to_string(successful_reconnects.load()) + 
-               " reconnects, " + std::to_string(successful_operations.load()) + " operations succeeded");
+  EXPECT_GT(successful_reconnects.load(), 0)
+      << "No threads successfully changed to valid config";
+
+  logger->info("Connection recovery test: " +
+               std::to_string(successful_reconnects.load()) + " reconnects, " +
+               std::to_string(successful_operations.load()) +
+               " operations succeeded");
 }
 
 // Stress test: High-frequency concurrent operations
@@ -968,33 +991,35 @@ TEST_F(RedisClientTest, HighFrequencyConcurrentStress) {
   RedisClient::setConfig(config);
 
   for (int t = 0; t < num_threads; ++t) {
-    threads.emplace_back([&total_operations, &successful_operations, &stop_test, t]() {
+    threads.emplace_back([&total_operations, &successful_operations, &stop_test,
+                          t]() {
       int thread_ops = 0;
       while (!stop_test.load()) {
         try {
-          sw::redis::Redis& client = RedisClientTest::getClient();
+          sw::redis::Redis &client = RedisClientTest::getClient();
           auto lock = RedisClientTest::lockClient();
-          
-          std::string key = "stress_" + std::to_string(t) + "_" + std::to_string(thread_ops);
+
+          std::string key =
+              "stress_" + std::to_string(t) + "_" + std::to_string(thread_ops);
           std::string value = "val_" + std::to_string(thread_ops);
-          
+
           // Rapid fire operations
           client.set(key, value);
           auto retrieved = client.get(key);
           client.del(key);
-          
+
           if (retrieved && *retrieved == value) {
             successful_operations++;
           }
-          
+
           total_operations++;
           thread_ops++;
-          
+
           // Brief yield to other threads
           if (thread_ops % 10 == 0) {
             std::this_thread::yield();
           }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
           total_operations++;
         }
       }
@@ -1005,22 +1030,25 @@ TEST_F(RedisClientTest, HighFrequencyConcurrentStress) {
   std::this_thread::sleep_for(std::chrono::seconds(duration_seconds));
   stop_test = true;
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
 
   // Calculate success rate
-  double success_rate = (double)successful_operations.load() / (double)total_operations.load() * 100.0;
-  
-  EXPECT_GT(total_operations.load(), duration_seconds * num_threads * 10) 
-    << "Stress test didn't generate enough operations";
-  EXPECT_GT(success_rate, 95.0) << "Success rate too low: " << success_rate << "%";
-  
-  logger->info("Stress test: " + std::to_string(total_operations.load()) + 
-               " total operations, " + std::to_string(successful_operations.load()) + 
-               " successful (" + std::to_string((int)success_rate) + "%)");
+  double success_rate = (double)successful_operations.load() /
+                        (double)total_operations.load() * 100.0;
+
+  EXPECT_GT(total_operations.load(), duration_seconds * num_threads * 10)
+      << "Stress test didn't generate enough operations";
+  EXPECT_GT(success_rate, 95.0)
+      << "Success rate too low: " << success_rate << "%";
+
+  logger->info("Stress test: " + std::to_string(total_operations.load()) +
+               " total operations, " +
+               std::to_string(successful_operations.load()) + " successful (" +
+               std::to_string((int)success_rate) + "%)");
 }
 
 } // namespace StateManager

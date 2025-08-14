@@ -22,7 +22,7 @@ RedisChannel::RedisChannel()
 RedisChannel::~RedisChannel() {
   this->unsubscribe();
   this->log(logging::LogLevel::TRACE, "Destroyed RedisChannel");
-  
+
   if (this->subscriptionThread_ && this->subscriptionThread_->joinable()) {
     this->subscriptionThread_->join();
     this->subscriptionThread_.reset();
@@ -47,13 +47,15 @@ void RedisChannel::subscribe(
 
   // Atomic check-and-set to prevent double initialization
   bool expected = false;
-  if (!this->running_.load() && this->running_.compare_exchange_strong(expected, true)) {
+  if (!this->running_.load() &&
+      this->running_.compare_exchange_strong(expected, true)) {
     this->log(logging::LogLevel::TRACE,
               "Calling initialize subscriber: " + channel);
     if (!initializeSubscriber()) {
       // Initialization failed, reset running flag
       this->running_.store(false);
-      this->log(logging::LogLevel::ERROR, "Failed to initialize subscriber for channel: " + channel);
+      this->log(logging::LogLevel::ERROR,
+                "Failed to initialize subscriber for channel: " + channel);
       return;
     }
   } else if (this->running_.load()) {
@@ -65,7 +67,7 @@ void RedisChannel::subscribe(
     } catch (const std::exception &e) {
       this->log(logging::LogLevel::ERROR,
                 "Error subscribing to channel " + channel + ": " + e.what());
-       this->running_.store(false);
+      this->running_.store(false);
     }
   }
   this->log(logging::LogLevel::DEBUG,
@@ -73,7 +75,8 @@ void RedisChannel::subscribe(
 }
 
 void RedisChannel::unsubscribe(const std::string &channel) {
-  if (channel.empty() && this->running_.load()) { // Unsubscribe from all channels
+  if (channel.empty() &&
+      this->running_.load()) { // Unsubscribe from all channels
     try {
       this->running_.store(false);
       std::unique_lock<std::mutex> lock(this->callbacks_mutex_);
@@ -125,8 +128,8 @@ bool RedisChannel::publish(const std::string &channel,
     long long result = redis.publish(channel, message);
     redisLock.unlock();
     this->log(logging::LogLevel::DEBUG,
-            "Published message to channel " + channel +
-                ", subscribers: " + std::to_string(result));
+              "Published message to channel " + channel +
+                  ", subscribers: " + std::to_string(result));
   } catch (const std::exception &e) {
     this->log(logging::LogLevel::ERROR,
               "Error publishing to channel " + channel + ": " + e.what());
@@ -156,7 +159,7 @@ bool RedisChannel::initializeSubscriber() {
   }
 
   // Register the on_method
-  try{
+  try {
     std::unique_lock<std::mutex> redisLock = RedisClient::lockClient();
     this->subscriber_->on_message([this](std::string chan, std::string msg) {
       std::unique_lock<std::mutex> lock(this->callbacks_mutex_);
@@ -169,7 +172,8 @@ bool RedisChannel::initializeSubscriber() {
   } catch (const std::exception &e) {
     this->subscriber_.reset();
     this->log(logging::LogLevel::ERROR,
-              "Exception while registering on_message: " + std::string(e.what()));
+              "Exception while registering on_message: " +
+                  std::string(e.what()));
     return false;
   }
 
@@ -181,19 +185,21 @@ bool RedisChannel::initializeSubscriber() {
     this->log(logging::LogLevel::DEBUG, "Subscribed to channel: " + pair.first);
   }
   lock.unlock();
-  
+
   this->startConsumeThread();
   return true;
 }
 
 void RedisChannel::startConsumeThread() {
   if (this->subscriptionThread_ && this->subscriptionThread_->joinable()) {
-    this->log(logging::LogLevel::DEBUG, "Stopping thread to consume redis messages.");
+    this->log(logging::LogLevel::DEBUG,
+              "Stopping thread to consume redis messages.");
     this->subscriptionThread_->join();
     this->subscriptionThread_.reset();
   }
   // Start thread to consume redis messages
-  this->log(logging::LogLevel::DEBUG, "Starting thread to consume redis messages.");
+  this->log(logging::LogLevel::DEBUG,
+            "Starting thread to consume redis messages.");
   this->running_.store(true);
   this->subscriptionThread_ = std::make_unique<std::thread>([this]() {
     while (this->running_.load()) {

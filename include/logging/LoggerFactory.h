@@ -10,14 +10,15 @@ namespace logging {
 
 class LoggerFactory {
 private:
-    static std::shared_ptr<LoggerIface> global_logger_;
-    static std::mutex logger_mutex_;
+  static std::shared_ptr<LoggerIface> global_logger_;
+  static std::mutex logger_mutex_;
+
 public:
-    LoggerFactory();
-    static std::shared_ptr<LoggerIface> getLogger();
-    static void setLevel(const std::string level);
-    static void setLevel(const LogLevel level);
-    static void setLogger(std::shared_ptr<LoggerIface> logger);
+  LoggerFactory();
+  static std::shared_ptr<LoggerIface> getLogger();
+  static void setLevel(const std::string level);
+  static void setLevel(const LogLevel level);
+  static void setLogger(std::shared_ptr<LoggerIface> logger);
 };
 
 } // namespace logging

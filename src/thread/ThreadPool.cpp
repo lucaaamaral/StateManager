@@ -133,7 +133,7 @@ void ThreadPool::managerFunction() {
       }
     }
   }
-  
+
   // Wait for all threads to be joined after cleanup queue
   this->taskCondition_.notify_all();
   while (workerCount) {
@@ -143,15 +143,14 @@ void ThreadPool::managerFunction() {
         it->thread.join();
         it = workerPool.erase(it);
         workerCount--;
-        this->log(logging::LogLevel::INFO,
-                  "Shuttind down thread, total: " +
-                      std::to_string(workerCount));
+        this->log(logging::LogLevel::INFO, "Shuttind down thread, total: " +
+                                               std::to_string(workerCount));
       } else {
         it++;
       }
     }
   }
-  
+
   this->log(logging::LogLevel::TRACE, "Leaving");
 }
 

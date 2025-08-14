@@ -100,17 +100,18 @@ bool RedisStorage::erase(const std::string &key) const {
               "Cannot erase key " + key + ": Lock not acquired");
     return false;
   }
-  
+
   sw::redis::Redis &redis = RedisClient::getClient();
   try {
     long deleted = redis.del(key);
     this->unlock(key);
-    
+
     if (deleted > 0) {
       this->log(logging::LogLevel::INFO, "Successfully erased key: " + key);
       return true;
     } else {
-      this->log(logging::LogLevel::WARNING, "Key " + key + " does not exist for erase");
+      this->log(logging::LogLevel::WARNING,
+                "Key " + key + " does not exist for erase");
       return false;
     }
   } catch (const std::exception &e) {
@@ -121,13 +122,14 @@ bool RedisStorage::erase(const std::string &key) const {
   }
 }
 
-bool RedisStorage::update(const std::string &key, const std::string &newValue) const {
+bool RedisStorage::update(const std::string &key,
+                          const std::string &newValue) const {
   if (!this->tryLock(key)) {
     this->log(logging::LogLevel::DEBUG,
               "Cannot update key " + key + ": Lock not acquired");
     return false;
   }
-  
+
   sw::redis::Redis &redis = RedisClient::getClient();
   try {
     redis.set(key, newValue);

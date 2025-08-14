@@ -1,13 +1,13 @@
-#include "logging/LoggerIface.h"
 #include "logging/LoggerFactory.h"
+#include "logging/LoggerIface.h"
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <vector>
 #include <mutex>
 #include <sstream>
+#include <vector>
 
 // Example of a custom logger that writes to a file
 class FileLogger : public StateManager::logging::LoggerIface {
@@ -130,7 +130,8 @@ int main() {
     std::cout << "Example 1: Using the default logger" << std::endl;
     {
       // The default logger will be used automatically
-      std::cout << "Default logger automatically used by logging framework" << std::endl;
+      std::cout << "Default logger automatically used by logging framework"
+                << std::endl;
     }
 
     // Example 2: Using a custom file logger

@@ -12,16 +12,16 @@
 namespace StateManager {
 
 // Utility function to convert RedisConfig to ConnectionOptions
-sw::redis::ConnectionOptions toConnectionOptions(const RedisConfig& config) {
-    sw::redis::ConnectionOptions options;
-    options.host = config.host;
-    options.port = config.port;
-    if (!config.password.empty()) {
-        options.password = config.password;
-    }
-    options.db = config.database;
-    options.socket_timeout = std::chrono::milliseconds(config.timeout_ms);
-    return options;
+sw::redis::ConnectionOptions toConnectionOptions(const RedisConfig &config) {
+  sw::redis::ConnectionOptions options;
+  options.host = config.host;
+  options.port = config.port;
+  if (!config.password.empty()) {
+    options.password = config.password;
+  }
+  options.db = config.database;
+  options.socket_timeout = std::chrono::milliseconds(config.timeout_ms);
+  return options;
 }
 
 std::shared_ptr<RedisClient> RedisClient::instance_ = nullptr;

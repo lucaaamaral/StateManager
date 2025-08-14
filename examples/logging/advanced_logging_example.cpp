@@ -78,9 +78,7 @@ public:
     current_level_ = stringToLogLevel(level);
   }
 
-  void setLevel(const LogLevel level) override {
-    current_level_ = level;
-  }
+  void setLevel(const LogLevel level) override { current_level_ = level; }
 
 private:
   void rotateLogFile() {
@@ -152,7 +150,8 @@ private:
 
 public:
   FilteredLogger(LogLevel min_level, std::shared_ptr<LoggerIface> base_logger)
-      : min_level_(min_level), base_logger_(std::move(base_logger)), current_level_(LogLevel::INFO) {}
+      : min_level_(min_level), base_logger_(std::move(base_logger)),
+        current_level_(LogLevel::INFO) {}
 
   void log(const std::string &level, const std::string &message,
            const std::string &context = "") override {
@@ -331,7 +330,8 @@ private:
 public:
   PerformanceLogger(std::shared_ptr<LoggerIface> base_logger)
       : base_logger_(std::move(base_logger)),
-        start_time_(std::chrono::steady_clock::now()), current_level_(LogLevel::INFO) {}
+        start_time_(std::chrono::steady_clock::now()),
+        current_level_(LogLevel::INFO) {}
 
   void log(const std::string &level, const std::string &message,
            const std::string &context = "") override {

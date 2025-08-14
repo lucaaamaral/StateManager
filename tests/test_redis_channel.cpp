@@ -119,8 +119,8 @@ TEST_F(RedisChannelTest, SubscribeUnsubscribeSubscribe) {
   const std::string message2 = "Message for channel 2";
 
   // Subscribe to channel with lambda that captures shared_ptr
-  channel->subscribe(channel1,
-                     [callback1](const std::string &msg) { (*callback1)(msg); });
+  channel->subscribe(
+      channel1, [callback1](const std::string &msg) { (*callback1)(msg); });
 
   // Give some time for subscription to be established
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -498,78 +498,92 @@ TEST_F(RedisChannelTest, DebugMultipleSubscriptions) {
 TEST_F(RedisChannelTest, SubscribeUnsubscribeResubscribePattern) {
   logger->info("=== Subscribe/Unsubscribe/Resubscribe Pattern Test ===");
 
-  // Test subscribing to a channel, unsubscribing, then subscribing to another channel (5x)
+  // Test subscribing to a channel, unsubscribing, then subscribing to another
+  // channel (5x)
   for (int i = 1; i <= 5; ++i) {
     logger->info("=== ITERATION " + std::to_string(i) + " ===");
-    
+
     auto callback = std::make_shared<MockCallback>();
     std::string channel_name = "test_cycle_channel_" + std::to_string(i);
     std::string test_message = "cycle_message_" + std::to_string(i);
-    
+
     // Step 1: Subscribe to channel
     logger->info("Step 1: Subscribing to " + channel_name);
-    channel->subscribe(channel_name, [callback](const std::string &msg) {
-      (*callback)(msg);
-    });
-    
+    channel->subscribe(
+        channel_name, [callback](const std::string &msg) { (*callback)(msg); });
+
     // Wait for subscription to be established
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
+
     // Step 2: Test publishing - First publish attempt
     logger->info("Step 2: First publish attempt to " + channel_name);
-    bool publish_result1 = channel->publish(channel_name, test_message + "_first");
-    logger->info("First publish result: " + std::string(publish_result1 ? "SUCCESS" : "FAILED"));
-    
+    bool publish_result1 =
+        channel->publish(channel_name, test_message + "_first");
+    logger->info("First publish result: " +
+                 std::string(publish_result1 ? "SUCCESS" : "FAILED"));
+
     // Wait for message processing
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    logger->info("After first publish - Callback count: " + std::to_string(callback->getCallCount()));
-    
+    logger->info("After first publish - Callback count: " +
+                 std::to_string(callback->getCallCount()));
+
     // Step 3: Second publish attempt (without unsubscribing)
     logger->info("Step 3: Second publish attempt to " + channel_name);
-    bool publish_result2 = channel->publish(channel_name, test_message + "_second");
-    logger->info("Second publish result: " + std::string(publish_result2 ? "SUCCESS" : "FAILED"));
-    
+    bool publish_result2 =
+        channel->publish(channel_name, test_message + "_second");
+    logger->info("Second publish result: " +
+                 std::string(publish_result2 ? "SUCCESS" : "FAILED"));
+
     // Wait for message processing
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    logger->info("After second publish - Callback count: " + std::to_string(callback->getCallCount()));
-    
+    logger->info("After second publish - Callback count: " +
+                 std::to_string(callback->getCallCount()));
+
     // Step 4: Third publish attempt (stress test)
     logger->info("Step 4: Third publish attempt to " + channel_name);
-    bool publish_result3 = channel->publish(channel_name, test_message + "_third");
-    logger->info("Third publish result: " + std::string(publish_result3 ? "SUCCESS" : "FAILED"));
-    
+    bool publish_result3 =
+        channel->publish(channel_name, test_message + "_third");
+    logger->info("Third publish result: " +
+                 std::string(publish_result3 ? "SUCCESS" : "FAILED"));
+
     // Wait for message processing
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    logger->info("After third publish - Final callback count: " + std::to_string(callback->getCallCount()));
-    
+    logger->info("After third publish - Final callback count: " +
+                 std::to_string(callback->getCallCount()));
+
     // Step 5: Unsubscribe from channel
     logger->info("Step 5: Unsubscribing from " + channel_name);
     channel->unsubscribe(channel_name);
-    
+
     // Wait for unsubscription to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
-    // Step 6: Test publishing after unsubscribe (should fail or return 0 subscribers)
+
+    // Step 6: Test publishing after unsubscribe (should fail or return 0
+    // subscribers)
     logger->info("Step 6: Publish after unsubscribe to " + channel_name);
-    bool publish_result4 = channel->publish(channel_name, test_message + "_after_unsub");
-    logger->info("Publish after unsubscribe result: " + std::string(publish_result4 ? "SUCCESS" : "FAILED"));
-    
+    bool publish_result4 =
+        channel->publish(channel_name, test_message + "_after_unsub");
+    logger->info("Publish after unsubscribe result: " +
+                 std::string(publish_result4 ? "SUCCESS" : "FAILED"));
+
     // Final callback count should remain unchanged
-    logger->info("Final callback count after unsubscribe: " + std::to_string(callback->getCallCount()));
-    
+    logger->info("Final callback count after unsubscribe: " +
+                 std::to_string(callback->getCallCount()));
+
     // Log summary for this iteration
     logger->info("ITERATION " + std::to_string(i) + " SUMMARY:");
-    logger->info("  - Publishes before unsub: " + 
-                 std::to_string(publish_result1) + ", " + 
-                 std::to_string(publish_result2) + ", " + 
-                 std::to_string(publish_result3));
+    logger->info(
+        "  - Publishes before unsub: " + std::to_string(publish_result1) +
+        ", " + std::to_string(publish_result2) + ", " +
+        std::to_string(publish_result3));
     logger->info("  - Publish after unsub: " + std::to_string(publish_result4));
-    logger->info("  - Total messages received: " + std::to_string(callback->getCallCount()));
-    
+    logger->info("  - Total messages received: " +
+                 std::to_string(callback->getCallCount()));
+
     // Short pause between iterations
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-  
+
   logger->info("=== Pattern test completed successfully ===");
   SUCCEED();
 }

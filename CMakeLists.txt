@@ -197,9 +197,15 @@ if(ENABLE_CODE_FORMATTING)
     if(CLANG_FORMAT)
         file(GLOB_RECURSE ALL_SOURCE_FILES 
             ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
             ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples*.c
+
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.c
         )
         
         add_custom_target(format
