@@ -104,6 +104,19 @@ target_link_libraries(StateManager
         redis++::redis++_static
 )
 
+# Create a combined static library using ar after build
+if(UNIX AND CMAKE_AR)
+    add_custom_command(TARGET StateManager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract
+        COMMAND cd ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract && ${CMAKE_AR} -x $<TARGET_FILE:StateManager>
+        COMMAND cd ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract && ${CMAKE_AR} -x $<TARGET_FILE:hiredis::hiredis>
+        COMMAND cd ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract && ${CMAKE_AR} -x $<TARGET_FILE:redis++::redis++_static>
+        COMMAND ${CMAKE_AR} -qcs $<TARGET_FILE:StateManager> ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract/*.o
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/tmp_extract
+        COMMENT "Combining static libraries into StateManager"
+    )
+endif()
+
 # Compiler flags
 target_compile_options(StateManager PRIVATE -Wall -Wextra -O2)
 
@@ -117,7 +130,7 @@ install(TARGETS StateManager
 # Install the header files
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING PATTERN "*.hpp"
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/external/json/include/nlohmann
